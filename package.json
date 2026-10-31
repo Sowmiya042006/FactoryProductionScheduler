@@ -1,15 +1,23 @@
 {
   "name": "factoryproductionscheduler",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently --names \"API,WEB\" --prefix-colors \"cyan,magenta\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "vite",
     "build": "vite build",
+    "start": "node server/index.js",
+    "preview": "vite preview",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "validate": "node validate.mjs"
   },
   "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "concurrently": "^9.1.2",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
     "lucide-react": "^1.66.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

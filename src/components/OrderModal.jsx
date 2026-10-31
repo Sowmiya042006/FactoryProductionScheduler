@@ -1,90 +1,77 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import { PRODUCTS } from '../data/defaults.js';
-import { validateOrder } from '../scheduler/scheduler.js';
 
-const EMPTY_FORM = {
-  id:        '',
-  productId: '',
-  quantity:  '',
-  dueISO:    '',
-};
+const EMPTY_FORM = { id: '', productId: '', quantity: '', dueISO: '' };
 
 function calcDuration(productId, quantity) {
   const p = PRODUCTS.find(p => p.id === productId);
-  if (!p || !quantity) return null;
+  if (!p) return null;
   const q = parseInt(quantity, 10);
   if (!Number.isInteger(q) || q <= 0) return null;
   return q * p.minsPerUnit;
 }
 
-export default function OrderModal({ order, existingOrders, onSave, onClose }) {
+/**
+ * OrderModal — client-side form, server-side validation.
+ * Validation errors come back from the API via the apiError prop.
+ */
+export default function OrderModal({ order, existingOrders, onSave, onClose, saving, apiError }) {
   const isEdit = !!order;
-  const [form, setForm]     = useState(isEdit ? { ...order, _editKey: order.id } : EMPTY_FORM);
-  const [errors, setErrors] = useState([]);
+  const [form, setForm] = useState(
+    isEdit
+      ? { id: order.id, productId: order.productId, quantity: String(order.quantity), dueISO: order.dueISO }
+      : EMPTY_FORM
+  );
 
   useEffect(() => {
     if (isEdit) {
-      setForm({ ...order, _editKey: order.id });
+      setForm({ id: order.id, productId: order.productId, quantity: String(order.quantity), dueISO: order.dueISO });
     }
   }, [order]);
 
   const duration = calcDuration(form.productId, form.quantity);
+  const dueValue = form.dueISO ? form.dueISO.slice(0, 16) : '';
 
   function handleChange(field, val) {
     setForm(f => ({ ...f, [field]: val }));
-    setErrors([]);
   }
 
   function handleSubmit() {
-    const toValidate = { ...form, id: form.id.trim() };
-    const errs = validateOrder(
-      toValidate,
-      isEdit ? existingOrders.filter(o => o.id !== order.id) : existingOrders
-    );
-    if (errs.length > 0) { setErrors(errs); return; }
-    onSave({ ...toValidate });
+    // Hand off to parent; server does validation
+    onSave({ ...form });
   }
 
-  // Format dueISO to datetime-local value
-  const dueValue = form.dueISO
-    ? form.dueISO.slice(0, 16)  // trim seconds
-    : '';
-
   return (
-    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget && !saving) onClose(); }}>
       <div className="modal">
         <div className="modal-header">
           <div className="modal-title">{isEdit ? 'Edit Order' : 'Add Order'}</div>
-          <button className="icon-btn" onClick={onClose}><X size={18} /></button>
+          <button className="icon-btn" onClick={onClose} disabled={saving}><X size={18} /></button>
         </div>
 
         <div className="modal-body">
-          {errors.length > 0 && (
+          {apiError && (
             <div className="form-errors">
-              {errors.map((e, i) => <div key={i}>• {e}</div>)}
+              {apiError.split('\n').map((e, i) => <div key={i}>• {e}</div>)}
             </div>
           )}
 
           <div className="form-group">
             <label className="form-label">Order ID</label>
             <input
-              className={`form-input ${errors.length && !form.id ? 'error' : ''}`}
+              className="form-input"
               value={form.id}
               onChange={e => handleChange('id', e.target.value)}
               placeholder="e.g. O13"
-              disabled={isEdit}
+              disabled={isEdit || saving}
             />
             {isEdit && <div className="form-hint">Order ID cannot be changed after creation.</div>}
           </div>
 
           <div className="form-group">
             <label className="form-label">Product</label>
-            <select
-              className="form-input"
-              value={form.productId}
-              onChange={e => handleChange('productId', e.target.value)}
-            >
+            <select className="form-input" value={form.productId} onChange={e => handleChange('productId', e.target.value)} disabled={saving}>
               <option value="">— Select product —</option>
               {PRODUCTS.map(p => (
                 <option key={p.id} value={p.id}>
@@ -98,12 +85,11 @@ export default function OrderModal({ order, existingOrders, onSave, onClose }) {
             <label className="form-label">Quantity</label>
             <input
               className="form-input"
-              type="number"
-              min="1"
-              step="1"
+              type="number" min="1" step="1"
               value={form.quantity}
               onChange={e => handleChange('quantity', e.target.value)}
               placeholder="Enter quantity"
+              disabled={saving}
             />
             {duration !== null && (
               <div className="form-hint">
@@ -120,8 +106,9 @@ export default function OrderModal({ order, existingOrders, onSave, onClose }) {
               type="datetime-local"
               value={dueValue}
               onChange={e => handleChange('dueISO', e.target.value ? e.target.value + ':00' : '')}
+              disabled={saving}
             />
-            <div className="form-hint">Schedule starts 2026-11-02 08:00. Past due dates will be flagged as late.</div>
+            <div className="form-hint">Past due dates will be flagged as late in the schedule.</div>
           </div>
 
           {form.productId && (
@@ -133,9 +120,9 @@ export default function OrderModal({ order, existingOrders, onSave, onClose }) {
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSubmit}>
-            {isEdit ? 'Save Changes' : 'Add Order'}
+          <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
+            {saving ? <><Loader2 size={14} className="animate-pulse" /> Saving…</> : isEdit ? 'Save Changes' : 'Add Order'}
           </button>
         </div>
       </div>

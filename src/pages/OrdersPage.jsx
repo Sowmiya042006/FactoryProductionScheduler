@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import { PRODUCTS } from '../data/defaults.js';
+import { api, ApiError } from '../api/client.js';
 import OrderModal from '../components/OrderModal.jsx';
 
 function calcDuration(productId, quantity) {
@@ -11,28 +12,61 @@ function calcDuration(productId, quantity) {
   return `${q * p.minsPerUnit} min`;
 }
 
-export default function OrdersPage({ orders, onOrdersChange, isStale }) {
-  const [editOrder,   setEditOrder]   = useState(null);
-  const [showModal,   setShowModal]   = useState(false);
-  const [deleteId,    setDeleteId]    = useState(null);
+export default function OrdersPage({
+  orders, isStale, scheduleStart,
+  onCreated, onUpdated, onDeleted,
+}) {
+  const [editOrder, setEditOrder]   = useState(null);
+  const [showModal, setShowModal]   = useState(false);
+  const [deleteId,  setDeleteId]    = useState(null);
+  const [saving,    setSaving]      = useState(false);
+  const [deleting,  setDeleting]    = useState(false);
+  const [apiError,  setApiError]    = useState('');
 
-  function openAdd()         { setEditOrder(null); setShowModal(true); }
-  function openEdit(o)       { setEditOrder(o);    setShowModal(true); }
-  function closeModal()      { setShowModal(false); setEditOrder(null); }
+  function openAdd()    { setEditOrder(null); setShowModal(true); setApiError(''); }
+  function openEdit(o)  { setEditOrder(o);    setShowModal(true); setApiError(''); }
+  function closeModal() { setShowModal(false); setEditOrder(null); }
 
-  function handleSave(form) {
-    const clean = { id: form.id.trim(), productId: form.productId, quantity: parseInt(form.quantity, 10), dueISO: form.dueISO };
-    if (editOrder) {
-      onOrdersChange(orders.map(o => o.id === editOrder.id ? clean : o));
-    } else {
-      onOrdersChange([...orders, clean]);
+  async function handleSave(form) {
+    setSaving(true);
+    setApiError('');
+    try {
+      if (editOrder) {
+        const updated = await api.updateOrder(editOrder.id, {
+          productId: form.productId,
+          quantity:  parseInt(form.quantity, 10),
+          dueISO:    form.dueISO,
+        });
+        onUpdated(updated);
+      } else {
+        const created = await api.createOrder({
+          id:        form.id.trim(),
+          productId: form.productId,
+          quantity:  parseInt(form.quantity, 10),
+          dueISO:    form.dueISO,
+        });
+        onCreated(created);
+      }
+      closeModal();
+    } catch (e) {
+      setApiError(e instanceof ApiError ? e.message : 'Save failed.');
+    } finally {
+      setSaving(false);
     }
-    closeModal();
   }
 
-  function handleDelete(id) {
-    onOrdersChange(orders.filter(o => o.id !== id));
-    setDeleteId(null);
+  async function handleDelete(id) {
+    setDeleting(true);
+    setApiError('');
+    try {
+      await api.deleteOrder(id);
+      onDeleted(id);
+      setDeleteId(null);
+    } catch (e) {
+      setApiError(e instanceof ApiError ? e.message : 'Delete failed.');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -42,10 +76,17 @@ export default function OrdersPage({ orders, onOrdersChange, isStale }) {
           <h1 className="page-title">Orders</h1>
           <p className="page-desc">Add, edit, and manage production orders. Changes require schedule regeneration.</p>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}>
+        <button className="btn btn-primary" onClick={openAdd} id="add-order-btn">
           <Plus size={16} /> Add Order
         </button>
       </div>
+
+      {apiError && (
+        <div className="warning-banner">
+          <AlertTriangle size={16} className="icon" />
+          <p>{apiError}</p>
+        </div>
+      )}
 
       {isStale && (
         <div className="stale-banner">
@@ -73,17 +114,17 @@ export default function OrdersPage({ orders, onOrdersChange, isStale }) {
               {orders.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--gray-400)' }}>
-                    No orders yet. Click "Add Order" to get started.
+                    No orders. Click "Add Order" to get started.
                   </td>
                 </tr>
               ) : orders.map(o => {
-                const product = PRODUCTS.find(p => p.id === o.productId);
-                const dueDate = new Date(o.dueISO);
+                const product   = PRODUCTS.find(p => p.id === o.productId);
+                const dueDate   = new Date(o.dueISO);
                 const familyCls =
-                  product?.family === 'LATEX' ? 'badge-family-latex' :
+                  product?.family === 'LATEX'     ? 'badge-family-latex' :
                   product?.family === 'NON_LATEX' ? 'badge-family-nonlatex' : 'badge-family-standard';
                 const familyLabel =
-                  product?.family === 'LATEX' ? 'Latex' :
+                  product?.family === 'LATEX'     ? 'Latex' :
                   product?.family === 'NON_LATEX' ? 'Non-Latex' : 'Standard';
 
                 return (
@@ -106,17 +147,8 @@ export default function OrdersPage({ orders, onOrdersChange, isStale }) {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="icon-btn" title="Edit" onClick={() => openEdit(o)}>
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          className="icon-btn"
-                          title="Delete"
-                          style={{ color: 'var(--red-500)' }}
-                          onClick={() => setDeleteId(o.id)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <button className="icon-btn" title="Edit"   onClick={() => openEdit(o)}><Pencil size={14} /></button>
+                        <button className="icon-btn" title="Delete" style={{ color: 'var(--red-500)' }} onClick={() => setDeleteId(o.id)}><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -134,6 +166,8 @@ export default function OrdersPage({ orders, onOrdersChange, isStale }) {
           existingOrders={orders}
           onSave={handleSave}
           onClose={closeModal}
+          saving={saving}
+          apiError={apiError}
         />
       )}
 
@@ -151,7 +185,13 @@ export default function OrdersPage({ orders, onOrdersChange, isStale }) {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setDeleteId(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={() => handleDelete(deleteId)}>Delete</button>
+              <button
+                className="btn btn-danger"
+                onClick={() => handleDelete(deleteId)}
+                disabled={deleting}
+              >
+                {deleting ? <Loader2 size={14} className="animate-pulse" /> : 'Delete'}
+              </button>
             </div>
           </div>
         </div>

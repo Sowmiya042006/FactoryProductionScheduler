@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Package, Clock, AlertTriangle, CheckCircle2, Timer,
-  Info, ChevronRight, X
+  Info, X, Loader2, Settings
 } from 'lucide-react';
 import Timeline from '../components/Timeline.jsx';
 import ScheduleTable from '../components/ScheduleTable.jsx';
@@ -25,7 +25,7 @@ function MetricCard({ label, value, sub, color, icon: Icon }) {
 }
 
 // ─── Comparison Panel ─────────────────────────────────────────────────────────
-function ComparisonPanel({ baselineMetrics, bestMetrics }) {
+function ComparisonPanel({ baselineMetrics, bestMetrics, scheduleStart }) {
   if (!baselineMetrics || !bestMetrics) return null;
 
   function Delta({ base, best, lowerIsBetter = true }) {
@@ -40,36 +40,11 @@ function ComparisonPanel({ baselineMetrics, bestMetrics }) {
   }
 
   const rows = [
-    {
-      label: 'Total late minutes',
-      baseVal: baselineMetrics.totalLate,
-      bestVal: bestMetrics.totalLate,
-      lowerBetter: true,
-      fmt: v => `${v} min`,
-    },
-    {
-      label: 'Late order count',
-      baseVal: baselineMetrics.lateCount,
-      bestVal: bestMetrics.lateCount,
-      lowerBetter: true,
-      fmt: v => `${v}`,
-      noDelta: true,
-    },
-    {
-      label: 'Cleaning minutes',
-      baseVal: baselineMetrics.totalCleaning,
-      bestVal: bestMetrics.totalCleaning,
-      lowerBetter: true,
-      fmt: v => `${v} min`,
-    },
-    {
-      label: 'Overall finish',
-      baseVal: baselineMetrics.overallFinish,
-      bestVal: bestMetrics.overallFinish,
-      lowerBetter: true,
-      fmt: v => fmtTime(fromMins(v)),
-      noDelta: true,
-    },
+    { label: 'Total late minutes', baseVal: baselineMetrics.totalLate,     bestVal: bestMetrics.totalLate,     lowerBetter: true,  fmt: v => `${v} min` },
+    { label: 'Late order count',   baseVal: baselineMetrics.lateCount,     bestVal: bestMetrics.lateCount,     lowerBetter: true,  fmt: v => `${v}`,    noDelta: true },
+    { label: 'Cleaning minutes',   baseVal: baselineMetrics.totalCleaning, bestVal: bestMetrics.totalCleaning, lowerBetter: true,  fmt: v => `${v} min` },
+    { label: 'Overall finish',     baseVal: baselineMetrics.overallFinish, bestVal: bestMetrics.overallFinish, lowerBetter: true,
+      fmt: v => fmtTime(fromMins(v, scheduleStart), scheduleStart), noDelta: true },
   ];
 
   return (
@@ -82,12 +57,9 @@ function ComparisonPanel({ baselineMetrics, bestMetrics }) {
           The result is a <strong>best candidate found</strong>, not a guaranteed optimum.
         </span>
       </div>
-
       <div className="comparison-grid">
         <div className="cmp-col baseline">
-          <h4 style={{ color: 'var(--gray-700)' }}>
-            <Clock size={16} /> Due-date Baseline (EDD)
-          </h4>
+          <h4 style={{ color: 'var(--gray-700)' }}><Clock size={16} /> Due-date Baseline (EDD)</h4>
           {rows.map(r => (
             <div className="cmp-row" key={r.label}>
               <label>{r.label}</label>
@@ -96,9 +68,7 @@ function ComparisonPanel({ baselineMetrics, bestMetrics }) {
           ))}
         </div>
         <div className="cmp-col best">
-          <h4 style={{ color: 'var(--teal-600)' }}>
-            <CheckCircle2 size={16} /> Best Candidate Found
-          </h4>
+          <h4 style={{ color: 'var(--teal-600)' }}><CheckCircle2 size={16} /> Best Candidate Found</h4>
           {rows.map(r => (
             <div className="cmp-row" key={r.label}>
               <label>{r.label}</label>
@@ -106,9 +76,7 @@ function ComparisonPanel({ baselineMetrics, bestMetrics }) {
                 <span className={`val ${r.bestVal < r.baseVal && r.lowerBetter ? 'better' : r.bestVal > r.baseVal && r.lowerBetter ? 'worse' : ''}`}>
                   {r.fmt(r.bestVal)}
                 </span>
-                {!r.noDelta && (
-                  <Delta base={r.baseVal} best={r.bestVal} lowerIsBetter={r.lowerBetter} />
-                )}
+                {!r.noDelta && <Delta base={r.baseVal} best={r.bestVal} lowerIsBetter={r.lowerBetter} />}
               </div>
             </div>
           ))}
@@ -119,7 +87,7 @@ function ComparisonPanel({ baselineMetrics, bestMetrics }) {
 }
 
 // ─── Order Detail Panel ───────────────────────────────────────────────────────
-function OrderDetailPanel({ order, onClose }) {
+function OrderDetailPanel({ order, onClose, scheduleStart }) {
   if (!order) return null;
   return (
     <div className="order-detail-panel">
@@ -130,50 +98,19 @@ function OrderDetailPanel({ order, onClose }) {
         </button>
       </h4>
       <div className="detail-grid">
-        <div className="detail-item">
-          <label>Product</label>
-          <span>{order.product?.name}</span>
-        </div>
-        <div className="detail-item">
-          <label>Family</label>
-          <span>{order.product?.family}</span>
-        </div>
-        <div className="detail-item">
-          <label>Line</label>
-          <span>{order.lineName} ({order.lineId})</span>
-        </div>
-        <div className="detail-item">
-          <label>Quantity</label>
-          <span>{order.quantity}</span>
-        </div>
-        <div className="detail-item">
-          <label>Clean</label>
-          <span>{order.cleaning > 0 ? `${order.cleaning} min` : 'None'}</span>
-        </div>
-        <div className="detail-item">
-          <label>Prod Start</label>
-          <span>{fmtTime(fromMins(order.prodStart))}</span>
-        </div>
-        <div className="detail-item">
-          <label>Finish</label>
-          <span>{fmtTime(fromMins(order.finish))}</span>
-        </div>
-        <div className="detail-item">
-          <label>Due</label>
-          <span>{fmtTime(order.dueDate)}</span>
-        </div>
-        <div className="detail-item">
-          <label>Duration</label>
-          <span>{order.duration} min</span>
-        </div>
+        <div className="detail-item"><label>Product</label><span>{order.product?.name}</span></div>
+        <div className="detail-item"><label>Family</label><span>{order.product?.family}</span></div>
+        <div className="detail-item"><label>Line</label><span>{order.lineName} ({order.lineId})</span></div>
+        <div className="detail-item"><label>Quantity</label><span>{order.quantity}</span></div>
+        <div className="detail-item"><label>Clean</label><span>{order.cleaning > 0 ? `${order.cleaning} min` : 'None'}</span></div>
+        <div className="detail-item"><label>Prod Start</label><span>{fmtTime(fromMins(order.prodStart, scheduleStart), scheduleStart)}</span></div>
+        <div className="detail-item"><label>Finish</label><span>{fmtTime(fromMins(order.finish, scheduleStart), scheduleStart)}</span></div>
+        <div className="detail-item"><label>Due</label><span>{fmtTime(order.dueDate, scheduleStart)}</span></div>
+        <div className="detail-item"><label>Duration</label><span>{order.duration} min</span></div>
         <div className="detail-item">
           <label>Status</label>
           <span className={order.isLate ? 'detail-late' : ''}>
-            {order.impossibleDeadline
-              ? '⚠ Impossible deadline'
-              : order.isLate
-              ? `⚠ Late by ${order.lateness} min`
-              : '✓ On time'}
+            {order.impossibleDeadline ? '⚠ Impossible deadline' : order.isLate ? `⚠ Late by ${order.lateness} min` : '✓ On time'}
           </span>
         </div>
       </div>
@@ -181,21 +118,58 @@ function OrderDetailPanel({ order, onClose }) {
   );
 }
 
+// ─── Schedule Start Edit ──────────────────────────────────────────────────────
+function ScheduleStartEditor({ current, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [value,   setValue]   = useState(current?.slice(0, 16) ?? '');
+  const [saving,  setSaving]  = useState(false);
+
+  if (!editing) {
+    return (
+      <button
+        className="btn btn-secondary btn-sm"
+        onClick={() => { setValue(current?.slice(0, 16) ?? ''); setEditing(true); }}
+        title="Edit schedule start"
+        style={{ gap: 4, fontSize: 'var(--text-xs)' }}
+      >
+        <Settings size={12} /> {current ? current.slice(0, 16).replace('T', ' ') : 'Set start'}
+      </button>
+    );
+  }
+
+  async function save() {
+    setSaving(true);
+    await onSave({ schedule_start: value + ':00' });
+    setSaving(false);
+    setEditing(false);
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+      <input
+        type="datetime-local"
+        className="form-input"
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        style={{ fontSize: 'var(--text-xs)', padding: '4px 8px' }}
+      />
+      <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>
+        {saving ? <Loader2 size={12} className="animate-pulse" /> : 'Save'}
+      </button>
+      <button className="btn btn-secondary btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+    </div>
+  );
+}
+
 // ─── Overview Page ────────────────────────────────────────────────────────────
 export default function OverviewPage({
-  scheduled,
-  baselineScheduled,
-  baselineMetrics,
-  bestMetrics,
-  warnings,
-  isStale,
-  canExport,
-  onGenerate,
-  view,
-  onViewChange,
+  scheduled, baselineScheduled, baselineMetrics, bestMetrics,
+  warnings, isStale, canExport, generating, genError,
+  onGenerate, view, onViewChange,
+  scheduleStart, settings, onSettingsUpdate,
 }) {
   const [selectedOrderId, setSelectedOrderId] = useState(null);
-  const [showComparison, setShowComparison]   = useState(false);
+  const [showComparison,  setShowComparison]  = useState(false);
 
   const activeSchedule = view === 'baseline' ? baselineScheduled : scheduled;
   const selectedOrder  = activeSchedule?.find(r => r.id === selectedOrderId) ?? null;
@@ -206,38 +180,42 @@ export default function OverviewPage({
   const totalClean = activeSchedule?.reduce((s, r) => s + r.cleaning, 0) ?? 0;
   const totalOrds  = activeSchedule?.length ?? 0;
 
-  const activeMetrics = view === 'baseline' ? baselineMetrics : bestMetrics;
-
   return (
     <div className="page">
       {/* Page header */}
       <div className="page-header">
         <div>
           <h1 className="page-title">Production Overview</h1>
-          <p className="page-desc">Schedule starting 2026-11-02 08:00 · Factory time</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', marginTop: 4 }}>
+            <p className="page-desc">Schedule start:</p>
+            <ScheduleStartEditor current={settings?.schedule_start} onSave={onSettingsUpdate} />
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
           <div className="view-toggle">
-            <button
-              className={`toggle-btn ${view === 'best' ? 'active' : ''}`}
-              onClick={() => onViewChange('best')}
-            >
-              Best candidate
-            </button>
-            <button
-              className={`toggle-btn ${view === 'baseline' ? 'active' : ''}`}
-              onClick={() => onViewChange('baseline')}
-            >
-              Baseline (EDD)
-            </button>
+            <button className={`toggle-btn ${view === 'best'     ? 'active' : ''}`} onClick={() => onViewChange('best')}>Best candidate</button>
+            <button className={`toggle-btn ${view === 'baseline' ? 'active' : ''}`} onClick={() => onViewChange('baseline')}>Baseline (EDD)</button>
           </div>
-          <button className="btn btn-primary btn-lg" onClick={onGenerate}>
-            ⚡ Generate Schedule
+          <button
+            className="btn btn-primary btn-lg"
+            onClick={onGenerate}
+            disabled={generating}
+            id="generate-schedule-btn"
+          >
+            {generating
+              ? <><Loader2 size={16} className="animate-pulse" /> Generating…</>
+              : '⚡ Generate Schedule'}
           </button>
         </div>
       </div>
 
-      {/* Stale banner */}
+      {genError && (
+        <div className="warning-banner">
+          <AlertTriangle size={16} className="icon" />
+          <p><strong>Schedule error:</strong> {genError}</p>
+        </div>
+      )}
+
       {isStale && (
         <div className="stale-banner">
           <Info size={16} className="icon" />
@@ -245,7 +223,6 @@ export default function OverviewPage({
         </div>
       )}
 
-      {/* Impossible deadline warnings */}
       {warnings?.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
           {warnings.map(w => (
@@ -259,40 +236,11 @@ export default function OverviewPage({
 
       {/* Metric cards */}
       <div className="metrics-grid">
-        <MetricCard
-          label="Total Orders"
-          value={totalOrds}
-          color="indigo"
-          icon={Package}
-          sub={`${view === 'best' ? 'Best candidate' : 'Baseline'} schedule`}
-        />
-        <MetricCard
-          label="On Time"
-          value={onTime}
-          color="teal"
-          icon={CheckCircle2}
-          sub={totalOrds > 0 ? `${Math.round((onTime / totalOrds) * 100)}% of orders` : ''}
-        />
-        <MetricCard
-          label="Late Orders"
-          value={lateCount}
-          color={lateCount > 0 ? 'red' : 'teal'}
-          icon={AlertTriangle}
-        />
-        <MetricCard
-          label="Total Late Minutes"
-          value={`${totalLate}`}
-          color={totalLate > 0 ? 'amber' : 'teal'}
-          icon={Timer}
-          sub="minutes behind schedule"
-        />
-        <MetricCard
-          label="Changeover Minutes"
-          value={`${totalClean}`}
-          color="amber"
-          icon={Clock}
-          sub="allergen cleaning time"
-        />
+        <MetricCard label="Total Orders"        value={totalOrds}   color="indigo"                          icon={Package}      sub={`${view === 'best' ? 'Best candidate' : 'Baseline'} schedule`} />
+        <MetricCard label="On Time"             value={onTime}      color="teal"                            icon={CheckCircle2} sub={totalOrds > 0 ? `${Math.round((onTime / totalOrds) * 100)}% of orders` : ''} />
+        <MetricCard label="Late Orders"         value={lateCount}   color={lateCount > 0 ? 'red' : 'teal'} icon={AlertTriangle} />
+        <MetricCard label="Total Late Minutes"  value={totalLate}   color={totalLate > 0 ? 'amber' : 'teal'} icon={Timer}       sub="minutes behind schedule" />
+        <MetricCard label="Changeover Minutes"  value={totalClean}  color="amber"                           icon={Clock}        sub="allergen cleaning time" />
       </div>
 
       <AssumptionsPanel />
@@ -301,8 +249,7 @@ export default function OverviewPage({
       <div className="card">
         <div className="card-header">
           <div className="card-title">
-            <span>📊</span>
-            Production Timeline
+            <span>📊</span> Production Timeline
             <span style={{ fontSize: 'var(--text-xs)', fontWeight: 400, color: 'var(--gray-400)', marginLeft: 4 }}>
               ({view === 'best' ? 'Best candidate' : 'EDD baseline'}) — click a block for details
             </span>
@@ -313,41 +260,36 @@ export default function OverviewPage({
             scheduled={activeSchedule}
             onSelectOrder={setSelectedOrderId}
             selectedOrderId={selectedOrderId}
+            scheduleStart={scheduleStart}
           />
         </div>
       </div>
 
-      {/* Order detail panel */}
       {selectedOrder && (
         <OrderDetailPanel
           order={selectedOrder}
           onClose={() => setSelectedOrderId(null)}
+          scheduleStart={scheduleStart}
         />
       )}
 
       {/* Baseline comparison */}
       <div className="card">
         <div className="card-header">
-          <div className="card-title">
-            <span>⚖</span>
-            Baseline Comparison
-          </div>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => setShowComparison(s => !s)}
-          >
+          <div className="card-title"><span>⚖</span> Baseline Comparison</div>
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowComparison(s => !s)}>
             {showComparison ? 'Hide' : 'Show'} Comparison
           </button>
         </div>
-        {showComparison && (
+        {showComparison ? (
           <div className="card-body">
             <ComparisonPanel
               baselineMetrics={baselineMetrics}
               bestMetrics={bestMetrics}
+              scheduleStart={scheduleStart}
             />
           </div>
-        )}
-        {!showComparison && (
+        ) : (
           <div style={{ padding: 'var(--sp-3) var(--sp-5)', color: 'var(--gray-400)', fontSize: 'var(--text-sm)' }}>
             Click "Show Comparison" to see baseline vs. best candidate metrics side-by-side.
           </div>
@@ -357,10 +299,7 @@ export default function OverviewPage({
       {/* Schedule Table */}
       <div className="card">
         <div className="card-header">
-          <div className="card-title">
-            <span>📋</span>
-            Schedule Details
-          </div>
+          <div className="card-title"><span>📋</span> Schedule Details</div>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--gray-400)' }}>
             {view === 'best' ? 'Best candidate' : 'EDD baseline'} · Click row to highlight in timeline
           </span>
@@ -370,6 +309,7 @@ export default function OverviewPage({
           canExport={canExport}
           onRowClick={setSelectedOrderId}
           selectedOrderId={selectedOrderId}
+          scheduleStart={scheduleStart}
         />
       </div>
     </div>
